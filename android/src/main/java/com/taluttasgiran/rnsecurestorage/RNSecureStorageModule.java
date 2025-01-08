@@ -14,6 +14,7 @@ import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.bridge.WritableNativeArray;
 import com.facebook.react.bridge.WritableNativeMap;
 import com.taluttasgiran.rnsecurestorage.secureStorage.SecureStorage;
+import com.taluttasgiran.rnsecurestorage.legacy.RNKeyStore;
 
 public class RNSecureStorageModule extends ReactContextBaseJavaModule {
     public static final String RN_SECURE_STORAGE = "RNSecureStorage";
@@ -37,12 +38,22 @@ public class RNSecureStorageModule extends ReactContextBaseJavaModule {
      */
     private final PreferencesStorage prefsStorage;
 
+
+    // legacy code integration
+    /**
+     * RNKeyStore instance.
+     */
+    private final RNKeyStore rnKeyStore;
     /**
      * Default constructor.
      */
+    private final ReactApplicationContext reactContext;
+
     public RNSecureStorageModule(@NonNull final ReactApplicationContext reactContext) {
         super(reactContext);
+        this.reactContext = reactContext;
         prefsStorage = new PreferencesStorage(reactContext);
+        rnKeyStore = new RNKeyStore();
         try {
             secureStorage = new SecureStorage();
         } catch (Exception e) {
@@ -81,9 +92,19 @@ public class RNSecureStorageModule extends ReactContextBaseJavaModule {
         try {
             String encryptedValue = prefsStorage.getEncryptedEntry(key);
             if (encryptedValue != null) {
+                // if data in new storage, remove it from legacy code
+                if (rnKeyStore.exists(this.reactContext, key)) {
+                    rnKeyStore.removeOldKey(this.reactContext, key);
+                };
                 promise.resolve(secureStorage.decrypt(encryptedValue));
+                
             } else {
-                promise.reject(Errors.NOT_FOUND, "RNSecureStorage: Value for " + key + " does not exist.");
+                // Check RNKeyStore for legacy data
+                if (rnKeyStore.exists(this.reactContext, key)) {
+                    promise.resolve(getLegacyTranslation(key));
+                } else {
+                    promise.reject(Errors.NOT_FOUND, "RNSecureStorage: Value for " + key + " does not exist.");
+                }
             }
         } catch (Exception e) {
             promise.reject(e);
@@ -219,4 +240,11 @@ public class RNSecureStorageModule extends ReactContextBaseJavaModule {
         }
     }
 
+    private String getLegacyTranslation(String key) {
+        String plainValue = rnKeyStore.getPlainText(this.reactContext, key);
+        String encryptedMigratedValue = secureStorage.encrypt(plainValue);
+        prefsStorage.storeEncryptedEntry(key, encryptedMigratedValue);
+        rnKeyStore.removeOldKey(this.reactContext, key);
+        return plainValue;
+    }
 }
