@@ -15,6 +15,7 @@ import com.facebook.react.bridge.WritableNativeArray;
 import com.facebook.react.bridge.WritableNativeMap;
 import com.taluttasgiran.rnsecurestorage.secureStorage.SecureStorage;
 import com.taluttasgiran.rnsecurestorage.legacy.RNKeyStore;
+import android.util.Log;
 
 public class RNSecureStorageModule extends ReactContextBaseJavaModule {
     public static final String RN_SECURE_STORAGE = "RNSecureStorage";
@@ -92,7 +93,7 @@ public class RNSecureStorageModule extends ReactContextBaseJavaModule {
         try {
             String encryptedValue = prefsStorage.getEncryptedEntry(key);
             if (encryptedValue != null) {
-                // if data in new storage, remove it from legacy code
+                // if key is also in RNKeyStore, remove it
                 if (rnKeyStore.exists(this.reactContext, key)) {
                     rnKeyStore.removeOldKey(this.reactContext, key);
                 };
@@ -241,10 +242,15 @@ public class RNSecureStorageModule extends ReactContextBaseJavaModule {
     }
 
     private String getLegacyTranslation(String key) {
-        String plainValue = rnKeyStore.getPlainText(this.reactContext, key);
-        String encryptedMigratedValue = secureStorage.encrypt(plainValue);
-        prefsStorage.storeEncryptedEntry(key, encryptedMigratedValue);
-        rnKeyStore.removeOldKey(this.reactContext, key);
-        return plainValue;
-    }
+        try{
+            String plainValue = rnKeyStore.getPlainText(this.reactContext, key);
+            String encryptedMigratedValue = secureStorage.encrypt(plainValue);
+            prefsStorage.storeEncryptedEntry(key, encryptedMigratedValue);
+            rnKeyStore.removeOldKey(this.reactContext, key);
+            return plainValue;
+        } catch (Exception e) {
+            Log.w("RNSecureStorageTranslation", "Error in getLegacyTranslation cannot:  " + key + e.getMessage());
+            return null;
+        }
+    }      
 }
